@@ -1,0 +1,2 @@
+class CBRParser:
+    pass
