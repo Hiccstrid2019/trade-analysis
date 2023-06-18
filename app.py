@@ -1,15 +1,15 @@
 
+from datetime import datetime, timedelta
+
+import pandas as pd
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import pandas as pd
-from datetime import datetime, date, timedelta
-import numpy as np
 
 from DAL.AnalyticRepository import AnalyticRepository
 from DAL.ConfigRepository import ConfigRepository
 from exporter.Repository import Repository
 from scraper.TelegramParser import TelegramParser
-from tasks import create_task, get_task_status, stop_task, save_tg_posts
+from tasks import get_task_status, stop_task, save_tg_posts, save_yt_videos, save_data_by_source
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -33,11 +33,13 @@ def run_task():
         print(source)
         if source == 'telegram':
             task = save_tg_posts.delay()
+        elif source == 'youtube':
+            task = save_yt_videos.delay()
         else:
             start_period = datetime.fromisoformat(request.json['startPeriod'][:-1]).date() + timedelta(days=2)
             print(start_period)
             end_period = datetime.fromisoformat(request.json['endPeriod'][:-1]).date()
-            task = create_task.delay(source, start_period, end_period)
+            task = save_data_by_source.delay(source, start_period, end_period)
             tasks.append({"id": task.id, "title": title, "start": start_period.strftime("%Y.%m.%d"),
                           "end": end_period.strftime("%Y.%m.%d")})
 
@@ -68,7 +70,7 @@ def get_period():
 @app.route('/periods', methods=['GET'])
 def get_all_periods():
     args = request.args
-    ischannels = args.get('tg', type=bool, default=False)
+    ischannels = args.get('channels', type=bool, default=False)
 
     repository = Repository()
     data = []
@@ -77,17 +79,26 @@ def get_all_periods():
         config_repository = ConfigRepository()
         channels_info = config_repository.get_all_tg_channels()
 
+        tg_channels = []
         for channel in channels_info:
             start, end = repository.get_data_range_for_tg(channel[1])
             if start is not None:
-                data.append({"id": channel[0], "name": channel[2],
+                tg_channels.append({"id": channel[0], "name": channel[2],
                          'period': f'{start.strftime("%d.%m.%Y")} - {end.strftime("%d.%m.%Y")}'})
+        channels_info = config_repository.get_all_youtube_channels()
+        yt_channels = []
+        for channel in channels_info:
+            start, end = repository.get_data_range_for_yt(channel[1])
+            if start is not None:
+                yt_channels.append({"id": channel[0], "name": channel[2],
+                                    'period': f'{start.strftime("%d.%m.%Y")} - {end.strftime("%d.%m.%Y")}'})
+        return jsonify({"telegram": tg_channels, "youtube": yt_channels})
     else:
         for source in sources:
             start, end = repository.get_data_range(list(source)[0])
             data.append({"id": sources.index(source), "name": source[list(source)[0]], 'period': f'{start.strftime("%d.%m.%Y")} - {end.strftime("%d.%m.%Y")}'})
 
-    return jsonify(data)
+        return jsonify(data)
 
 
 @app.route('/channels', methods=['GET', 'POST'])
@@ -107,8 +118,12 @@ def tg_channels():
         parser = TelegramParser()
 
         chat = parser.get_info(new_channel)
-        id = repository.add_tg_channel(chat.username, chat.title, chat.members_count, chat.photo.small_file_id)
-        return jsonify({"id": id, "username": chat.username, "name": chat.title, "subscribers": chat.members_count})
+        print(chat)
+        if chat is not None:
+            id = repository.add_tg_channel(chat.username, chat.title, chat.members_count, chat.photo.small_file_id)
+            return jsonify({"id": id, "username": chat.username, "name": chat.title, "subscribers": chat.members_count})
+        else:
+            return jsonify({"error": "Телеграм канал с таким username-ом не найден"}), 404
 
 
 @app.route('/stat', methods=['GET'])
@@ -164,11 +179,12 @@ def stocks():
 @app.route('/exchanges', methods=['GET'])
 def companies():
     repository = AnalyticRepository()
-    companies = repository.get_all_company()
+    companies_moex = repository.get_all_company_exchange(1)
+    companies_spbex = repository.get_all_company_exchange(2)
     return jsonify({
         'exchanges': [
-            {'name': 'Московская биржа', 'value': 'moex', 'companies': companies},
-            {'name': 'СПб биржа', 'value': 'spbex', 'companies': []}
+            {'name': 'Московская биржа', 'value': 'moex', 'companies': companies_moex},
+            {'name': 'СПб биржа', 'value': 'spbex', 'companies': companies_spbex}
         ]
     })
 
@@ -184,6 +200,19 @@ def corr():
     data = repository.get_prices(id_company, id_market, date)
 
     return jsonify({"date": date, "corr": data})
+
+
+@app.route('/posts', methods=['GET'])
+def get_posts():
+    args = request.args
+    id_company = args.get('id', type=int)
+    id_market = args.get('market', type=int)
+    date = args.get('date')
+
+    repository = AnalyticRepository()
+    data = repository.get_posts_mention_company(id_company, id_market, date)
+
+    return jsonify(data)
 
 
 # def get_post(post_id, chat_id):

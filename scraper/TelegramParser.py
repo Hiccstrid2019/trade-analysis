@@ -1,7 +1,9 @@
 import asyncio
 from pathlib import Path
-from pyrogram import Client
+from pyrogram import Client, errors
 import os
+
+from pyrogram.enums import ChatType
 
 from scraper.setting import APP_ID, APP_HASH
 
@@ -13,11 +15,19 @@ class TelegramParser:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self.app = Client(os.getcwd() + '/scraper/account', app_id, api_hash)
+        # self.app = Client('account', app_id, api_hash)
 
     def get_info(self, channel):
         with self.app:
-            chat = self.app.get_chat(channel)
-            return chat
+            try:
+                chat = self.app.get_chat(channel)
+                if chat.type == ChatType.GROUP:
+                    return chat
+                return None
+            except errors.exceptions.bad_request_400.UsernameNotOccupied:
+                return None
+            except errors.exceptions.bad_request_400.UsernameInvalid:
+                return None
 
     def save_history(self, channel: str, offset_id: int = 0):
 
@@ -32,4 +42,5 @@ class TelegramParser:
 
 if __name__ == '__main__':
     p = TelegramParser()
-    p.save_history('if_stocks', offset_id=5825)
+    # p.save_history('if_stocks', offset_id=5825)
+    print(p.get_info('@if_stocks'))

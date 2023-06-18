@@ -22,6 +22,13 @@ class Repository(Exporter):
         data = self.cursor.fetchone()
         return data
 
+    def get_data_range_for_yt(self, channel: str) -> tuple:
+        command = "SELECT min(date), max(date) " \
+                  "FROM rowdata.public.youtube WHERE username = %s"
+        self.cursor.execute(command, (channel,))
+        data = self.cursor.fetchone()
+        return data
+
     def get_channel_offset_msg_id(self, channel: str) -> int:
         query = "SELECT max((publication->>'id')::int) as id " \
                 "FROM public.telegram WHERE publication->'sender_chat'->>'username' = %s;"

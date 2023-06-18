@@ -27,12 +27,8 @@ class YouTubeExporter(Exporter):
                             row['date'] = row['date'].replace('сент.', 'сен.')
                         date = datetime.strptime(row['date'], "%d %b. %Y г.").date()
                     views = int(''.join(row['views'].split()[:-1]))
-                    if username == '':
-                        channel = 'Smirnova Capital'
-                    else:
-                        channel = 'Finversia'
 
-                    self.cursor.execute(command, (date, username, channel, views,
+                    self.cursor.execute(command, (date, username, row['channel_name'], views,
                                                   row['description'], row['pinned_comment'] or None,
                                                   row['url']))
             self.connection.commit()
@@ -40,4 +36,4 @@ class YouTubeExporter(Exporter):
 
 if __name__ == '__main__':
     mx = YouTubeExporter()
-    mx.export()
+    mx.export(['@PotapenkoTV'])

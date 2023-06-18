@@ -10,16 +10,6 @@ class ReferenceBuilder(Transformer):
         data = self.analytic_cursor.fetchall()
         return data
 
-    def _get_all_companies(self):
-        query = "SELECT ticker, id_company, id_stock_market, short_name " \
-                  "FROM analytics.public.ticker JOIN analytics.public.company ON id_company = id;"
-        self.analytic_cursor.execute(query)
-        data = self.analytic_cursor.fetchall()
-        return data
-
-    def _clean_name(self, name):
-        return name.replace('-ао', '').replace(' ао', '').replace(' ап', '').replace('+', '')
-
     def build(self):
         companies = self._get_all_companies()
         posts = self._get_all_posts()
